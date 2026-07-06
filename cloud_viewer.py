@@ -36,9 +36,10 @@ import shutil
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, request, Response, send_from_directory, abort
+from flask import Flask, request, Response, send_from_directory, abort, session, redirect, url_for
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("PUSH_SECRET", "change-this-secret")
 
 # ── Config (from environment variables, with safe local-testing defaults) ──
 VIEWER_USERNAME = os.environ.get("VIEWER_USERNAME", "FailureAI")
@@ -49,26 +50,61 @@ STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", "/tmp/dashboard_storage"))
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ── Viewer login (Basic Auth) — protects all read routes ──
+# ── Viewer login (session-based) — protects all read routes ──
 def _check_viewer_auth(username, password):
     return username == VIEWER_USERNAME and password == VIEWER_PASSWORD
 
 
-def _viewer_login_prompt():
-    return Response(
-        "Login required to view the dashboard.",
-        401,
-        {"WWW-Authenticate": 'Basic realm="Failure Dashboard"'},
-    )
+_LOGIN_HTML = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Sign in</title>
+<style>
+  body{{font-family:sans-serif;background:#f3f4f6;display:flex;align-items:center;
+       justify-content:center;height:100vh;margin:0;}}
+  .card{{background:#fff;padding:28px;border-radius:10px;width:300px;border:1px solid #e5e7eb;}}
+  input{{width:100%;box-sizing:border-box;padding:8px;margin-bottom:12px;border:1px solid #ccc;border-radius:6px;}}
+  button{{width:100%;padding:9px;background:#111827;color:#fff;border:0;border-radius:6px;}}
+  .err{{color:#b91c1c;font-size:13px;margin-bottom:10px;}}
+</style></head>
+<body><div class="card">
+  <h3>Failure Dashboard — Sign in</h3>
+  {error_html}
+  <form method="POST" action="/login">
+    <input type="hidden" name="next" value="{next_path}">
+    <input type="text" name="username" placeholder="Username" required>
+    <input type="password" name="password" placeholder="Password" required>
+    <button type="submit">Sign in</button>
+  </form>
+</div></body></html>"""
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    next_path = request.values.get("next") or "/"
+    if not next_path.startswith("/"):
+        next_path = "/"
+    if request.method == "GET":
+        return _LOGIN_HTML.format(error_html="", next_path=next_path)
+
+    username = request.form.get("username", "")
+    password = request.form.get("password", "")
+    # Session cookie is NOT permanent, so it clears when the browser is
+    # closed — the next visit asks to sign in again, instead of Basic
+    # Auth's "remembered forever" behavior.
+    if _check_viewer_auth(username, password):
+        session.clear()
+        session["role"] = "viewer"
+        return redirect(next_path)
+    else:
+        err = '<div class="err">Incorrect username or password.</div>'
+        return _LOGIN_HTML.format(error_html=err, next_path=next_path), 401
 
 
 def requires_viewer_login(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not _check_viewer_auth(auth.username, auth.password):
-            return _viewer_login_prompt()
-        return f(*args, **kwargs)
+        if session.get("role") == "viewer":
+            return f(*args, **kwargs)
+        return redirect(url_for("login_page", next=request.path))
     return wrapper
 
 
