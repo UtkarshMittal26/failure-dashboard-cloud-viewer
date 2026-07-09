@@ -43,8 +43,8 @@ app.secret_key = os.environ.get("PUSH_SECRET", "change-this-secret")
 
 # ── Config (from environment variables, with safe local-testing defaults) ──
 VIEWER_USERNAME = os.environ.get("VIEWER_USERNAME", "FailureAI")
-VIEWER_PASSWORD = os.environ.get("VIEWER_PASSWORD", "FailureAI@123")
-PUSH_SECRET     = os.environ.get("PUSH_SECRET", "change-this-secret")
+VIEWER_PASSWORD = os.environ.get("VIEWER_PASSWORD", "Utkarsh@123")
+PUSH_SECRET     = os.environ.get("PUSH_SECRET", "UMUMUM26112004@123")
 
 STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", "/tmp/dashboard_storage"))
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
